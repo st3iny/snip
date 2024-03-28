@@ -57,17 +57,3 @@ func (conf *Conf) GetBackend(domain string) *backend.Backend {
 
 	return backend
 }
-
-func blockHasOption(block *Block, name string) bool {
-	if block == nil {
-		return false
-	}
-
-	for _, opt := range block.Options {
-		if opt.Key == name {
-			return true
-		}
-	}
-
-	return false
-}
