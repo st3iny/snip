@@ -121,6 +121,11 @@ func (s *server) handleConnection(clientConn net.Conn) {
 		return
 	}
 
+	if len(backend.UpstreamAddrs) == 0 {
+		log.Printf("Backend %s has no upstreams\n", backend.Name)
+		return
+	}
+
 	// TODO: make timeout configurable
 	backendConn, err := backend.DialTimeout(clientConn.RemoteAddr(), 5*time.Second)
 	if err != nil {
