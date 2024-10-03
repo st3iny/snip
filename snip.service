@@ -1,0 +1,11 @@
+[Unit]
+Description=A simple TLS passthrough proxy
+
+[Service]
+Type=simple
+ExecStartPre=snip validate
+ExecStart=snip
+ExecReload=kill -USR1 $MAINPID
+
+[Install]
+WantedBy=multi-user.target
