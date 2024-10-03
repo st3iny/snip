@@ -134,6 +134,6 @@ func (s *server) handleConnection(clientConn net.Conn) {
 	}
 	defer backendConn.Close()
 
-	log.Printf("Proxying %s -> %s\n", clientConn.RemoteAddr(), backendConn.RemoteAddr())
-	proxy.Proxy(clientConn, backendConn, peekedClientBytes)
+	stats := proxy.Proxy(clientConn, backendConn, peekedClientBytes)
+	log.Printf("Proxied %s -> %s (from client %d, to client %d bytes)\n", clientConn.RemoteAddr(), backendConn.RemoteAddr(), stats.ClientToBackend, stats.BackendToClient)
 }

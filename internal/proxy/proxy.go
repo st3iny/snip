@@ -6,26 +6,40 @@ import (
 	"sync"
 )
 
-func Proxy(clientConn, backendConn net.Conn, peekedClientBytes io.Reader) {
+type ProxyStats struct {
+	BackendToClient int64
+	ClientToBackend int64
+}
+
+func Proxy(clientConn, backendConn net.Conn, peekedClientBytes io.Reader) ProxyStats {
 	// TODO: error handling?
 
 	var wg sync.WaitGroup
 	wg.Add(2)
 
+	var backendToClient int64
+	var clientToBackend int64
+
 	// backend -> client
 	go func() {
-		io.Copy(clientConn, backendConn)
+		backendToClient, _ = io.Copy(clientConn, backendConn)
 		clientConn.(*net.TCPConn).CloseWrite()
 		wg.Done()
 	}()
 
 	// client -> backend
 	go func() {
-		io.Copy(backendConn, peekedClientBytes)
-		io.Copy(backendConn, clientConn)
+		clientToBackend, _ := io.Copy(backendConn, peekedClientBytes)
+		bytes, _ := io.Copy(backendConn, clientConn)
+		clientToBackend += bytes
 		backendConn.(*net.TCPConn).CloseWrite()
 		wg.Done()
 	}()
 
 	wg.Wait()
+
+	return ProxyStats{
+		BackendToClient: backendToClient,
+		ClientToBackend: clientToBackend,
+	}
 }
