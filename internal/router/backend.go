@@ -1,4 +1,4 @@
-package backend
+package router
 
 import (
 	"fmt"
@@ -9,8 +9,10 @@ import (
 	proxyproto "github.com/pires/go-proxyproto"
 )
 
+// TODO: implement load balancing
 type Backend struct {
-	UpstreamAddr string
+	Name          string
+	UpstreamAddr  string
 	ProxyProtocol bool
 }
 
@@ -50,7 +52,6 @@ func (b *Backend) DialTimeout(clientAddr net.Addr, timeout time.Duration) (net.C
 	return conn, nil
 }
 
-
 func sendProxyProtocolHeader(conn net.Conn, clientAddr net.Addr) error {
 	clientAddrString := clientAddr.String()
 
@@ -64,11 +65,11 @@ func sendProxyProtocolHeader(conn net.Conn, clientAddr net.Addr) error {
 	}
 
 	header := &proxyproto.Header{
-		Version:            1,
-		Command:            proxyproto.PROXY,
-		TransportProtocol:  protocol,
-		SourceAddr: clientAddr,
-		DestinationAddr: conn.RemoteAddr(),
+		Version:           1,
+		Command:           proxyproto.PROXY,
+		TransportProtocol: protocol,
+		SourceAddr:        clientAddr,
+		DestinationAddr:   conn.RemoteAddr(),
 	}
 
 	_, err := header.WriteTo(conn)

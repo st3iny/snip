@@ -1,59 +1,121 @@
 package cfg
 
-import "snip.io/internal/backend"
+import (
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/BurntSushi/toml"
+	"snip.io/internal/router"
+)
+
+const defaultListen = ":443"
 
 type Conf struct {
 	Listen string
-	Backends map[string]*backend.Backend
-	Frontends map[string]*backend.Backend
+	Router router.Router
 }
 
 func Parse(path string) (*Conf, error) {
-	snipfile, err := ParseSnipfile(path)
+	rawConfigBytes, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		log.Printf("Using empty config file (%s does not exit)\n", path)
+		emptyConf := &Conf{
+			Listen: defaultListen,
+			Router: router.Router{
+				Frontends: []router.Frontend{},
+				Backends:  []router.Backend{},
+			},
+		}
+		return emptyConf, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	var rawConfig rawConf
+	err = toml.Unmarshal(rawConfigBytes, &rawConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	listen := ":443"
-	if snipfile.HasGlobal("listen") {
-		listen = snipfile.GetGlobal("listen")
+	if rawConfig.Listen == "" {
+		rawConfig.Listen = defaultListen
 	}
 
-	conf := &Conf{
-		Listen: listen,
-		Backends: make(map[string]*backend.Backend),
-		Frontends: make(map[string]*backend.Backend),
+	if len(rawConfig.Frontends) == 0 {
+		log.Println("Config file does not contain any frontends")
 	}
 
-	for _, back := range snipfile.Backends {
-		conf.Backends[back.Name] = &backend.Backend{
-			UpstreamAddr:  back.Upstream,
-			ProxyProtocol: back.Block.Has("proxy_protocol"),
-		}
+	var backends []router.Backend
+	for _, backend := range rawConfig.Backends {
+		backends = append(backends, router.Backend{
+			Name:          backend.Name,
+			UpstreamAddr:  backend.Upstreams[0],
+			ProxyProtocol: backend.ProxyProtocol,
+		})
 	}
 
-	for _, frontend := range snipfile.Frontends {
-		back, ok := conf.Backends[frontend.Backend]
-		if !ok {
-			back = &backend.Backend {
+	var frontends []router.Frontend
+	for i, frontend := range rawConfig.Frontends {
+		backend := getBackend(frontend.Backend, backends)
+		if backend == nil {
+			backend = &router.Backend{
+				Name:          frontend.Backend,
 				UpstreamAddr:  frontend.Backend,
-				ProxyProtocol: frontend.Block.Has("proxy_protocol"),
+				ProxyProtocol: false,
 			}
 		}
 
-		conf.Frontends[frontend.Domain] = back
+		var matchers []router.DomainMatcher
+		for j, match := range frontend.Match {
+			matcher, err := router.ParseMatcher(match)
+			if err != nil {
+				return nil, fmt.Errorf("Failed to parse matcher %d of fronted %d: %s", j, i, err)
+			}
+
+			matchers = append(matchers, matcher)
+		}
+
+		frontends = append(frontends, router.Frontend{
+			Match:   matchers,
+			Backend: backend,
+		})
 	}
 
-	return conf, nil
+	log.Println("Using config file at", path)
+	config := &Conf{
+		Listen: rawConfig.Listen,
+		Router: router.Router{
+			Frontends: frontends,
+			Backends:  backends,
+		},
+	}
+	return config, nil
 }
 
-func (conf *Conf) GetBackend(domain string) *backend.Backend {
-	// TODO: match wildcards
-
-	backend, ok := conf.Frontends[domain]
-	if !ok {
-		return nil
+func getBackend(name string, backends []router.Backend) *router.Backend {
+	for i, backend := range backends {
+		if backend.Name == name {
+			return &backends[i]
+		}
 	}
 
-	return backend
+	return nil
+}
+
+type rawFrontend struct {
+	Match   []string `toml:"match"`
+	Backend string   `toml:"backend"`
+}
+
+type rawBackend struct {
+	Name          string   `toml:"name"`
+	Upstreams     []string `toml:"upstreams"`
+	ProxyProtocol bool     `toml:"proxy_protocol"`
+}
+
+type rawConf struct {
+	Listen    string        `toml:"listen"`
+	Frontends []rawFrontend `toml:"frontend"`
+	Backends  []rawBackend  `toml:"backend"`
 }

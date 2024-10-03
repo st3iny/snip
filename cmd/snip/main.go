@@ -1,11 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
@@ -15,33 +15,29 @@ import (
 )
 
 func main() {
-	confPath := "/etc/snip/Snipfile"
+	pid := os.Getpid()
+	log.Println("Snip running with pid", pid)
+	os.WriteFile("/var/tmp/snip.pid", []byte(fmt.Sprint(pid)), 0644)
+
+	confPath := "/etc/snip/config.toml"
 	if len(os.Args) >= 2 {
 		confPath = os.Args[1]
 	}
-	log.Println("Using config at", confPath)
 
 	conf, err := cfg.Parse(confPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	l, err := net.Listen("tcp", conf.Listen)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Println("Listening on", conf.Listen)
-
-	server := server {
-		conf: conf,
-	}
-
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGUSR1)
 
+	quit := make(chan bool, 1)
+	confChannel := make(chan *cfg.Conf, 1)
+
 	go func() {
 		for {
-			<- sigs
+			<-sigs
 			log.Println("Reloading config")
 
 			conf, err := cfg.Parse(confPath)
@@ -50,31 +46,59 @@ func main() {
 				continue
 			}
 
-			server.confMutex.Lock()
-			server.conf = conf
-			server.confMutex.Unlock()
+			quit <- true
+			confChannel <- conf
 		}
 	}()
 
 	for {
-		conn, err := l.Accept()
-		if err != nil {
-			log.Println(err)
-			continue
+		server := server{
+			conf: conf,
+			quit: quit,
 		}
-
-		go server.handleConnection(conn)
+		server.run()
+		conf = <-confChannel
 	}
 }
 
 type server struct {
 	conf *cfg.Conf
-	confMutex sync.RWMutex
+	quit chan bool
+}
+
+func (s *server) run() {
+	l, err := net.Listen("tcp", s.conf.Listen)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Println("Listening on", s.conf.Listen)
+
+	shuttingDown := false
+	go func() {
+		<-s.quit
+		shuttingDown = true
+		l.Close()
+	}()
+
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			if !shuttingDown {
+				log.Println("Accepting connection failed:", err)
+			}
+			break
+		}
+
+		go s.handleConnection(conn)
+	}
+
+	log.Println("Server shutting down")
 }
 
 func (s *server) handleConnection(clientConn net.Conn) {
 	defer clientConn.Close()
 
+	// TODO: make timeout configurable
 	if err := clientConn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		log.Println(err)
 		return
@@ -91,15 +115,14 @@ func (s *server) handleConnection(clientConn net.Conn) {
 		return
 	}
 
-	s.confMutex.RLock()
-	backend := s.conf.GetBackend(clientHello.ServerName)
-	s.confMutex.RUnlock()
+	backend := s.conf.Router.GetBackend(clientHello.ServerName)
 	if backend == nil {
 		log.Println("No backend for server name:", clientHello.ServerName)
 		return
 	}
 
-	backendConn, err := backend.DialTimeout(clientConn.RemoteAddr(), 5 * time.Second)
+	// TODO: make timeout configurable
+	backendConn, err := backend.DialTimeout(clientConn.RemoteAddr(), 5*time.Second)
 	if err != nil {
 		log.Println(err)
 		return
@@ -109,4 +132,3 @@ func (s *server) handleConnection(clientConn net.Conn) {
 	log.Printf("Proxying %s -> %s\n", clientConn.RemoteAddr(), backendConn.RemoteAddr())
 	proxy.Proxy(clientConn, backendConn, peekedClientBytes)
 }
-
