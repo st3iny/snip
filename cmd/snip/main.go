@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -15,18 +16,22 @@ import (
 )
 
 func main() {
+	confPath := flag.String("config", "/etc/snip/config.toml", "Path to the config file")
+	flag.Parse()
+
 	pid := os.Getpid()
 	log.Println("Snip running with pid", pid)
 	os.WriteFile("/var/tmp/snip.pid", []byte(fmt.Sprint(pid)), 0644)
 
-	confPath := "/etc/snip/config.toml"
-	if len(os.Args) >= 2 {
-		confPath = os.Args[1]
-	}
-
-	conf, err := cfg.Parse(confPath)
+	conf, err := cfg.Parse(*confPath)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	remainingArgs := flag.Args()
+	if len(remainingArgs) > 0 && remainingArgs[0] == "validate" {
+		log.Default().Println("Config is valid")
+		return
 	}
 
 	sigs := make(chan os.Signal, 1)
@@ -40,7 +45,7 @@ func main() {
 			<-sigs
 			log.Println("Reloading config")
 
-			conf, err := cfg.Parse(confPath)
+			conf, err := cfg.Parse(*confPath)
 			if err != nil {
 				log.Println("Keeping old config:", err)
 				continue
