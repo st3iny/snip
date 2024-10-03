@@ -29,7 +29,7 @@ func Proxy(clientConn, backendConn net.Conn, peekedClientBytes io.Reader) ProxyS
 
 	// client -> backend
 	go func() {
-		clientToBackend, _ := io.Copy(backendConn, peekedClientBytes)
+		clientToBackend, _ = io.Copy(backendConn, peekedClientBytes)
 		bytes, _ := io.Copy(backendConn, clientConn)
 		clientToBackend += bytes
 		backendConn.(*net.TCPConn).CloseWrite()
