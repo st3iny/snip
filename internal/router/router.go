@@ -11,8 +11,6 @@ func (router *Router) GetBackend(domain string) *Backend {
 		return nil
 	}
 
-	// TODO: implement load balancing
-
 	return frontend.Backend
 }
 
