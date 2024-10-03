@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
 	"strings"
 	"time"
@@ -9,15 +10,15 @@ import (
 	proxyproto "github.com/pires/go-proxyproto"
 )
 
-// TODO: implement load balancing
 type Backend struct {
 	Name          string
-	UpstreamAddr  string
+	UpstreamAddrs []string
 	ProxyProtocol bool
 }
 
 func (b *Backend) Dial(clientAddr net.Addr) (net.Conn, error) {
-	conn, err := net.Dial("tcp", b.UpstreamAddr)
+	upstreamAddr := b.balance()
+	conn, err := net.Dial("tcp", upstreamAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +36,8 @@ func (b *Backend) Dial(clientAddr net.Addr) (net.Conn, error) {
 }
 
 func (b *Backend) DialTimeout(clientAddr net.Addr, timeout time.Duration) (net.Conn, error) {
-	conn, err := net.DialTimeout("tcp", b.UpstreamAddr, timeout)
+	upstreamAddr := b.balance()
+	conn, err := net.DialTimeout("tcp", upstreamAddr, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -50,6 +52,15 @@ func (b *Backend) DialTimeout(clientAddr net.Addr, timeout time.Duration) (net.C
 	}
 
 	return conn, nil
+}
+
+func (b *Backend) balance() string {
+	upstreamLen := len(b.UpstreamAddrs)
+	if upstreamLen == 1 {
+		return b.UpstreamAddrs[0]
+	}
+
+	return b.UpstreamAddrs[rand.Intn(upstreamLen)]
 }
 
 func sendProxyProtocolHeader(conn net.Conn, clientAddr net.Addr) error {

@@ -50,7 +50,7 @@ func Parse(path string) (*Conf, error) {
 	for _, backend := range rawConfig.Backends {
 		backends = append(backends, router.Backend{
 			Name:          backend.Name,
-			UpstreamAddr:  backend.Upstreams[0],
+			UpstreamAddrs: backend.Upstreams,
 			ProxyProtocol: backend.ProxyProtocol,
 		})
 	}
@@ -61,7 +61,7 @@ func Parse(path string) (*Conf, error) {
 		if backend == nil {
 			backend = &router.Backend{
 				Name:          frontend.Backend,
-				UpstreamAddr:  frontend.Backend,
+				UpstreamAddrs: []string{frontend.Backend},
 				ProxyProtocol: false,
 			}
 		}
