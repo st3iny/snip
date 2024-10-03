@@ -1,10 +1,8 @@
 package router
 
 import (
-	"fmt"
 	"math/rand"
 	"net"
-	"strings"
 	"time"
 
 	proxyproto "github.com/pires/go-proxyproto"
@@ -64,25 +62,7 @@ func (b *Backend) balance() string {
 }
 
 func sendProxyProtocolHeader(conn net.Conn, clientAddr net.Addr) error {
-	clientAddrString := clientAddr.String()
-
-	var protocol proxyproto.AddressFamilyAndProtocol
-	if strings.Contains(clientAddrString, ".") {
-		protocol = proxyproto.TCPv4
-	} else if strings.Contains(clientAddrString, ":") {
-		protocol = proxyproto.TCPv6
-	} else {
-		return fmt.Errorf("Unknown client address network: %s", clientAddrString)
-	}
-
-	header := &proxyproto.Header{
-		Version:           1,
-		Command:           proxyproto.PROXY,
-		TransportProtocol: protocol,
-		SourceAddr:        clientAddr,
-		DestinationAddr:   conn.RemoteAddr(),
-	}
-
+	header := proxyproto.HeaderProxyFromAddrs(2, clientAddr, conn.RemoteAddr())
 	_, err := header.WriteTo(conn)
 	if err != nil {
 		return err
