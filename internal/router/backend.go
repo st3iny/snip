@@ -9,9 +9,10 @@ import (
 )
 
 type Backend struct {
-	Name          string
-	UpstreamAddrs []string
-	ProxyProtocol bool
+	Name           string
+	UpstreamAddrs  []string
+	ProxyProtocol  bool
+	ConnectTimeout uint
 }
 
 func (b *Backend) Dial(clientAddr net.Addr) (net.Conn, error) {

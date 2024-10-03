@@ -9,7 +9,10 @@ import (
 	"snip.io/internal/router"
 )
 
-const defaultListen = ":443"
+var (
+	defaultListen         string = ":443"
+	defaultConnectTimeout uint   = 5
+)
 
 type Conf struct {
 	Listen string
@@ -41,6 +44,9 @@ func Parse(path string) (*Conf, error) {
 	if rawConfig.Listen == "" {
 		rawConfig.Listen = defaultListen
 	}
+	if rawConfig.ConnectTimeout == nil {
+		rawConfig.ConnectTimeout = &defaultConnectTimeout
+	}
 
 	if len(rawConfig.Frontends) == 0 {
 		log.Println("Config file does not contain any frontends")
@@ -48,10 +54,16 @@ func Parse(path string) (*Conf, error) {
 
 	var backends []router.Backend
 	for _, backend := range rawConfig.Backends {
+		timeout := backend.ConnectTimeout
+		if timeout == nil {
+			timeout = rawConfig.ConnectTimeout
+		}
+
 		backends = append(backends, router.Backend{
-			Name:          backend.Name,
-			UpstreamAddrs: backend.Upstreams,
-			ProxyProtocol: backend.ProxyProtocol,
+			Name:           backend.Name,
+			UpstreamAddrs:  backend.Upstreams,
+			ProxyProtocol:  backend.ProxyProtocol,
+			ConnectTimeout: *timeout,
 		})
 	}
 
@@ -60,9 +72,10 @@ func Parse(path string) (*Conf, error) {
 		backend := getBackend(frontend.Backend, backends)
 		if backend == nil {
 			backend = &router.Backend{
-				Name:          frontend.Backend,
-				UpstreamAddrs: []string{frontend.Backend},
-				ProxyProtocol: false,
+				Name:           frontend.Backend,
+				UpstreamAddrs:  []string{frontend.Backend},
+				ProxyProtocol:  false,
+				ConnectTimeout: *rawConfig.ConnectTimeout,
 			}
 		}
 
@@ -109,13 +122,15 @@ type rawFrontend struct {
 }
 
 type rawBackend struct {
-	Name          string   `toml:"name"`
-	Upstreams     []string `toml:"upstreams"`
-	ProxyProtocol bool     `toml:"proxy_protocol"`
+	Name           string   `toml:"name"`
+	Upstreams      []string `toml:"upstreams"`
+	ProxyProtocol  bool     `toml:"proxy_protocol"`
+	ConnectTimeout *uint    `toml:"connect_timeout"`
 }
 
 type rawConf struct {
-	Listen    string        `toml:"listen"`
-	Frontends []rawFrontend `toml:"frontend"`
-	Backends  []rawBackend  `toml:"backend"`
+	Listen         string        `toml:"listen"`
+	ConnectTimeout *uint         `toml:"connect_timeout"`
+	Frontends      []rawFrontend `toml:"frontend"`
+	Backends       []rawBackend  `toml:"backend"`
 }

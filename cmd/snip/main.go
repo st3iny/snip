@@ -98,8 +98,7 @@ func (s *server) run() {
 func (s *server) handleConnection(clientConn net.Conn) {
 	defer clientConn.Close()
 
-	// TODO: make timeout configurable
-	if err := clientConn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	if err := clientConn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
 		log.Println(err)
 		return
 	}
@@ -126,8 +125,13 @@ func (s *server) handleConnection(clientConn net.Conn) {
 		return
 	}
 
-	// TODO: make timeout configurable
-	backendConn, err := backend.DialTimeout(clientConn.RemoteAddr(), 5*time.Second)
+	var backendConn net.Conn
+	if backend.ConnectTimeout > 0 {
+		timeout := time.Duration(backend.ConnectTimeout) * time.Second
+		backendConn, err = backend.DialTimeout(clientConn.RemoteAddr(), timeout)
+	} else {
+		backendConn, err = backend.Dial(clientConn.RemoteAddr())
+	}
 	if err != nil {
 		log.Println(err)
 		return

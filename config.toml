@@ -17,6 +17,10 @@
 # configure snip to listen on all interfaces.
 listen = ":443"
 
+# Default timeout in seconds when connecting to a backend. This can be overwritten for each
+# individual backend. A timeout of 0 means unlimited (not recommended).
+connect_timeout = 5
+
 # 1. rule
 [[frontend]]
 match = ["example.com"]
@@ -45,3 +49,4 @@ upstreams = [
   "192.168.0.100:443",
   "192.168.0.101:443"
 ]
+connect_timeout = 20
