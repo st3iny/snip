@@ -1,0 +1,47 @@
+# Snip exemplary configuration file
+#
+# A frontend is either a literal domain, a wildcard wich will recursively match all subdomains or a
+# catch-all rule (*) which will always match. Rules are processed in the same order they were
+# declared in.
+#
+# A backend is either a "<host>:<port>" combination or named backend. A named backend can be used
+# to group a set of upstreams under a single name and balance load between them.
+#
+# Routing rules explained:
+#   1. https://example.com         -> caddy backend   -> 127.0.0.1:8443 + proxy_protocol
+#   2. https://cluster.com         -> cluster backend -> 192.168.0.100:443 or 192.168.0.101:443
+#      https://*.cluster.com       -> cluster backend -> 192.168.0.100:443 or 192.168.0.101:443
+#   3. https://* (everything else) -> 127.0.0.1:6443
+
+# A "<host>:<port>" combination on which to for remote connections. Omitting the host part will
+# configure snip to listen on all interfaces.
+listen = ":443"
+
+# 1. rule
+[[frontend]]
+match = ["example.com"]
+backend = "caddy"
+
+# 2. rule
+[[frontend]]
+match = ["cluster.com", "*.cluster.com"]
+backend = "cluster"
+
+# 3. rule
+[[frontend]]
+match = ["*"]
+backend = "127.0.0.1:6443"
+
+# Named backend with a single upstream which accepts proxy protocol
+[[backend]]
+name = "caddy"
+upstreams = ["127.0.0.1:8443"]
+proxy_protocol = true
+
+# Named backend with load balancing
+[[backend]]
+name = "cluster"
+upstreams = [
+  "192.168.0.100:443",
+  "192.168.0.101:443"
+]
