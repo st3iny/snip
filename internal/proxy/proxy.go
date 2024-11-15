@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"io"
+	"log"
 	"net"
 	"sync"
 )
@@ -12,8 +13,6 @@ type ProxyStats struct {
 }
 
 func Proxy(clientConn, backendConn net.Conn, peekedClientBytes io.Reader) ProxyStats {
-	// TODO: error handling?
-
 	var wg sync.WaitGroup
 	wg.Add(2)
 
@@ -22,16 +21,32 @@ func Proxy(clientConn, backendConn net.Conn, peekedClientBytes io.Reader) ProxyS
 
 	// backend -> client
 	go func() {
-		backendToClient, _ = io.Copy(clientConn, backendConn)
+		var err error
+
+		backendToClient, err = io.Copy(clientConn, backendConn)
+		if err != nil {
+			log.Println("Error during backend -> client communication:", err)
+		}
+
 		clientConn.(*net.TCPConn).CloseWrite()
 		wg.Done()
 	}()
 
 	// client -> backend
 	go func() {
-		clientToBackend, _ = io.Copy(backendConn, peekedClientBytes)
-		bytes, _ := io.Copy(backendConn, clientConn)
+		var err error
+
+		clientToBackend, err = io.Copy(backendConn, peekedClientBytes)
+		if err != nil {
+			log.Println("Error during client -> backend communication (peeked bytes):", err)
+		}
+
+		bytes, err := io.Copy(backendConn, clientConn)
 		clientToBackend += bytes
+		if err != nil {
+			log.Println("Error during client -> backend communication:", err)
+		}
+
 		backendConn.(*net.TCPConn).CloseWrite()
 		wg.Done()
 	}()
