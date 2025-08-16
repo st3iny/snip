@@ -8,13 +8,13 @@ import (
 	"time"
 )
 
-func PeekClientHello(reader io.Reader) (*tls.ClientHelloInfo, io.Reader, error) {
+func PeekClientHello(reader io.Reader) (*tls.ClientHelloInfo, []byte, error) {
 	peekedBytes := new(bytes.Buffer)
 	hello, err := readClientHello(io.TeeReader(reader, peekedBytes))
 	if err != nil {
 		return nil, nil, err
 	}
-	return hello, peekedBytes, nil
+	return hello, peekedBytes.Bytes(), nil
 }
 
 func readClientHello(reader io.Reader) (*tls.ClientHelloInfo, error) {

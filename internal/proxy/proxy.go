@@ -12,7 +12,7 @@ type ProxyStats struct {
 	ClientToBackend int64
 }
 
-func Proxy(clientConn, backendConn net.Conn, peekedClientBytes io.Reader) ProxyStats {
+func Proxy(clientConn, backendConn net.Conn, peekedClientBytes []byte) ProxyStats {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
@@ -34,15 +34,14 @@ func Proxy(clientConn, backendConn net.Conn, peekedClientBytes io.Reader) ProxyS
 
 	// client -> backend
 	go func() {
-		var err error
-
-		clientToBackend, err = io.Copy(backendConn, peekedClientBytes)
+		peekedByteCount, err := backendConn.Write(peekedClientBytes)
+		clientToBackend = int64(peekedByteCount)
 		if err != nil {
 			log.Println("Error during client -> backend communication (peeked bytes):", err)
 		}
 
-		bytes, err := io.Copy(backendConn, clientConn)
-		clientToBackend += bytes
+		remainingByteCount, err := io.Copy(backendConn, clientConn)
+		clientToBackend += remainingByteCount
 		if err != nil {
 			log.Println("Error during client -> backend communication:", err)
 		}
