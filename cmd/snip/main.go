@@ -21,11 +21,11 @@ func main() {
 
 	pid := os.Getpid()
 	log.Println("Snip running with pid", pid)
-	os.WriteFile("/var/tmp/snip.pid", []byte(fmt.Sprint(pid)), 0644)
+	os.WriteFile("/var/tmp/snip.pid", fmt.Append([]byte{}, pid), 0644)
 
 	conf, err := cfg.Parse(*confPath)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Failed to parse config:", err)
 	}
 
 	remainingArgs := flag.Args()
@@ -74,7 +74,7 @@ type server struct {
 func (s *server) run() {
 	l, err := net.Listen("tcp", s.conf.Listen)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Failed to listen on socket:", err)
 	}
 	log.Println("Listening on", s.conf.Listen)
 
