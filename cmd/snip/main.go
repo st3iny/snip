@@ -15,13 +15,19 @@ import (
 	"snip.io/internal/sni"
 )
 
+const pidFilePath = "/var/tmp/snip.pid"
+
 func main() {
 	confPath := flag.String("config", "/etc/snip/config.toml", "Path to the config file")
 	flag.Parse()
 
 	pid := os.Getpid()
 	log.Println("Snip running with pid", pid)
-	os.WriteFile("/var/tmp/snip.pid", fmt.Append([]byte{}, pid), 0644)
+	err := os.WriteFile(pidFilePath, fmt.Append([]byte{}, pid), 0644)
+	if err != nil {
+		log.Fatal("Failed to write pid file:", err)
+	}
+	defer os.Remove(pidFilePath)
 
 	conf, err := cfg.Parse(*confPath)
 	if err != nil {
@@ -34,15 +40,27 @@ func main() {
 		return
 	}
 
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGUSR1)
+	shutdownSigs := make(chan os.Signal, 1)
+	signal.Notify(shutdownSigs, syscall.SIGINT, syscall.SIGTERM)
 
-	quit := make(chan bool, 1)
+	reloadSigs := make(chan os.Signal, 1)
+	signal.Notify(reloadSigs, syscall.SIGUSR1)
+
+	stopServer := make(chan bool, 1)
 	confChannel := make(chan *cfg.Conf, 1)
+
+	running := true
+	go func() {
+		<-shutdownSigs
+
+		running = false
+		stopServer <- true
+		close(confChannel)
+	}()
 
 	go func() {
 		for {
-			<-sigs
+			<-reloadSigs
 			log.Println("Reloading config")
 
 			conf, err := cfg.Parse(*confPath)
@@ -51,15 +69,15 @@ func main() {
 				continue
 			}
 
-			quit <- true
+			stopServer <- true
 			confChannel <- conf
 		}
 	}()
 
-	for {
+	for running {
 		server := server{
 			conf: conf,
-			quit: quit,
+			quit: stopServer,
 		}
 		server.run()
 		conf = <-confChannel
