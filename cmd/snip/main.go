@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -112,40 +113,44 @@ func (s *server) run() {
 			break
 		}
 
-		go s.handleConnection(conn)
+		go func() {
+			err := s.handleConnection(conn)
+			if err != nil {
+				log.Println(err)
+			}
+		}()
 	}
 
 	log.Println("Server shutting down")
 }
 
-func (s *server) handleConnection(clientConn net.Conn) {
+func (s *server) handleConnection(clientConn net.Conn) error {
 	defer clientConn.Close()
 
 	if err := clientConn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 
 	clientHello, peekedClientBytes, err := sni.PeekClientHello(clientConn)
 	if err != nil {
-		log.Println(err)
-		return
+		return err
+	}
+
+	if clientHello.ServerName == "" {
+		return errors.New("Client sent no SNI")
 	}
 
 	if err := clientConn.SetReadDeadline(time.Time{}); err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 
 	backend := s.conf.Router.GetBackend(clientHello.ServerName)
 	if backend == nil {
-		log.Println("No backend for server name:", clientHello.ServerName)
-		return
+		return fmt.Errorf("No backend for server name: %s", clientHello.ServerName)
 	}
 
 	if len(backend.UpstreamAddrs) == 0 {
-		log.Printf("Backend %s has no upstreams\n", backend.Name)
-		return
+		return fmt.Errorf("Backend %s has no upstreams", backend.Name)
 	}
 
 	var backendConn net.Conn
@@ -156,11 +161,11 @@ func (s *server) handleConnection(clientConn net.Conn) {
 		backendConn, err = backend.Dial(clientConn.RemoteAddr())
 	}
 	if err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 	defer backendConn.Close()
 
 	stats := proxy.Proxy(clientConn, backendConn, peekedClientBytes)
 	log.Printf("Proxied %s -> %s (from client %d, to client %d bytes)\n", clientConn.RemoteAddr(), backendConn.RemoteAddr(), stats.ClientToBackend, stats.BackendToClient)
+	return nil
 }
