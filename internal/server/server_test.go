@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -13,6 +14,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -69,7 +71,12 @@ func TestSnip(t *testing.T) {
 			},
 		}
 
-		res, err := client.Post(fmt.Sprintf("https://%s", conf.Listen), "application/octet-stream", bytes.NewBuffer(payload))
+		var res *http.Response
+		err := retry(100*time.Millisecond, func() error {
+			var err error
+			res, err = client.Post(fmt.Sprintf("https://%s", conf.Listen), "application/octet-stream", bytes.NewBuffer(payload))
+			return err
+		})
 		require.NoError(t, err)
 		defer res.Body.Close()
 
@@ -127,7 +134,12 @@ func TestSnip(t *testing.T) {
 			},
 		}
 
-		res, err := client.Post(fmt.Sprintf("https://%s", conf.Listen), "application/octet-stream", bytes.NewBuffer(payload))
+		var res *http.Response
+		err := retry(100*time.Millisecond, func() error {
+			var err error
+			res, err = client.Post(fmt.Sprintf("https://%s", conf.Listen), "application/octet-stream", bytes.NewBuffer(payload))
+			return err
+		})
 		require.NoError(t, err)
 		defer res.Body.Close()
 
@@ -239,4 +251,19 @@ func matcher(t *testing.T, match string) router.DomainMatcher {
 	matcher, err := router.ParseMatcher(match)
 	require.NoError(t, err)
 	return matcher
+}
+
+func retry(sleep time.Duration, fn func() error) error {
+	var errs []error
+	for range 3 {
+		err := fn()
+		if err == nil {
+			return nil
+		}
+
+		errs = append(errs, err)
+		time.Sleep(sleep)
+	}
+
+	return errors.Join(errs...)
 }
