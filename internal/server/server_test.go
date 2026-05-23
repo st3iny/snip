@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"bytes"
@@ -52,11 +52,8 @@ func TestSnip(t *testing.T) {
 				},
 			},
 		}
-		server := server{
-			conf: conf,
-			quit: quit,
-		}
-		go server.run()
+		server := New(conf, quit)
+		go server.Run()
 
 		certs := x509.NewCertPool()
 		certs.AddCert(srv.Certificate())
@@ -112,11 +109,8 @@ func TestSnip(t *testing.T) {
 				},
 			},
 		}
-		server := server{
-			conf: conf,
-			quit: quit,
-		}
-		go server.run()
+		server := New(conf, quit)
+		go server.Run()
 
 		certs := x509.NewCertPool()
 		certs.AddCert(srv.Certificate())
@@ -162,9 +156,7 @@ func TestSnip_HandleConnection(t *testing.T) {
 				},
 			},
 		}
-		server := server{
-			conf: conf,
-		}
+		server := New(conf, nil)
 
 		mockServer, mockClient := net.Pipe()
 		defer mockServer.Close()
@@ -210,9 +202,7 @@ func TestSnip_HandleConnection(t *testing.T) {
 				},
 			},
 		}
-		server := server{
-			conf: conf,
-		}
+		server := New(conf, nil)
 
 		mockServer, mockClient := net.Pipe()
 		defer mockServer.Close()
