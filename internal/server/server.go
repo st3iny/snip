@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 	"time"
 
 	"snip.io/internal/cfg"
@@ -36,6 +37,7 @@ func (s *Server) Run(ctx context.Context) {
 		l.Close()
 	})
 
+	var wg sync.WaitGroup
 	for {
 		conn, err := l.Accept()
 		if err != nil {
@@ -45,15 +47,16 @@ func (s *Server) Run(ctx context.Context) {
 			break
 		}
 
-		go func() {
+		wg.Go(func() {
 			err := s.handleConnection(conn)
 			if err != nil {
 				log.Println(err)
 			}
-		}()
+		})
 	}
 
-	log.Println("Server shutting down")
+	log.Println("Server shutting down (waiting for pending connections)")
+	wg.Wait()
 }
 
 func (s *Server) handleConnection(clientConn net.Conn) error {
