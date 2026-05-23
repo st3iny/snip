@@ -2,9 +2,9 @@
   description = "A simple TLS pass-through reverse proxy based on peeking SNI messages";
 
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-24.05";
+    nixpkgs.url = "nixpkgs/nixos-25.11";
     gomod2nix = {
-      url = "github:nix-community/gomod2nix";
+      url = "github:nix-community/gomod2nix/v1.7.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -12,7 +12,7 @@
   outputs = { self, nixpkgs, gomod2nix }:
     let
       version = builtins.substring 0 8 self.lastModifiedDate;
-      supportedSystems = [ "x86_64-linux" ];
+      supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
       nixpkgsFor = forAllSystems (system:
         import nixpkgs {
