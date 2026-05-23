@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -23,7 +24,8 @@ func TestSnip(t *testing.T) {
 	t.Run("catchall", func(t *testing.T) {
 		payload := []byte("Hello, World!")
 
-		quit := make(chan bool, 1)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
 		srvCalled := 0
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35,7 +37,7 @@ func TestSnip(t *testing.T) {
 			assert.NoError(t, err)
 
 			srvCalled++
-			quit <- true
+			cancel()
 		}))
 		defer srv.Close()
 
@@ -52,8 +54,8 @@ func TestSnip(t *testing.T) {
 				},
 			},
 		}
-		server := New(conf, quit)
-		go server.Run()
+		server := New(conf)
+		go server.Run(ctx)
 
 		certs := x509.NewCertPool()
 		certs.AddCert(srv.Certificate())
@@ -80,7 +82,8 @@ func TestSnip(t *testing.T) {
 	t.Run("fqdn", func(t *testing.T) {
 		payload := []byte("Hello, World!")
 
-		quit := make(chan bool, 1)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
 		srvCalled := 0
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +95,7 @@ func TestSnip(t *testing.T) {
 			assert.NoError(t, err)
 
 			srvCalled++
-			quit <- true
+			cancel()
 		}))
 		defer srv.Close()
 
@@ -109,8 +112,8 @@ func TestSnip(t *testing.T) {
 				},
 			},
 		}
-		server := New(conf, quit)
-		go server.Run()
+		server := New(conf)
+		go server.Run(ctx)
 
 		certs := x509.NewCertPool()
 		certs.AddCert(srv.Certificate())
@@ -156,7 +159,7 @@ func TestSnip_HandleConnection(t *testing.T) {
 				},
 			},
 		}
-		server := New(conf, nil)
+		server := New(conf)
 
 		mockServer, mockClient := net.Pipe()
 		defer mockServer.Close()
@@ -202,7 +205,7 @@ func TestSnip_HandleConnection(t *testing.T) {
 				},
 			},
 		}
-		server := New(conf, nil)
+		server := New(conf)
 
 		mockServer, mockClient := net.Pipe()
 		defer mockServer.Close()

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -37,24 +38,13 @@ func main() {
 		return
 	}
 
-	shutdownSigs := make(chan os.Signal, 1)
-	signal.Notify(shutdownSigs, syscall.SIGINT, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
 
 	reloadSigs := make(chan os.Signal, 1)
 	signal.Notify(reloadSigs, syscall.SIGUSR1)
 
-	stopServer := make(chan bool, 1)
 	confChannel := make(chan *cfg.Conf, 1)
-
-	running := true
-	go func() {
-		<-shutdownSigs
-
-		running = false
-		stopServer <- true
-		close(confChannel)
-	}()
-
 	go func() {
 		for {
 			<-reloadSigs
@@ -66,14 +56,28 @@ func main() {
 				continue
 			}
 
-			stopServer <- true
 			confChannel <- conf
 		}
 	}()
 
-	for running {
-		srv := server.New(conf, stopServer)
-		srv.Run()
-		conf = <-confChannel
+	serverDone := make(chan any, 1)
+	for ctx.Err() == nil {
+		serverCtx, cancel := context.WithCancel(ctx)
+
+		go func() {
+			srv := server.New(conf)
+			srv.Run(serverCtx)
+			serverDone <- nil
+		}()
+
+		select {
+		case <-ctx.Done():
+			break
+		case conf = <-confChannel:
+			break
+		}
+
+		cancel()
+		<-serverDone
 	}
 }

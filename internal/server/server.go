@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -14,34 +15,31 @@ import (
 
 type Server struct {
 	conf *cfg.Conf
-	quit chan bool
 }
 
-func New(conf *cfg.Conf, quit chan bool) *Server {
+func New(conf *cfg.Conf) *Server {
 	return &Server{
 		conf: conf,
-		quit: quit,
 	}
 }
 
-func (s *Server) Run() {
+func (s *Server) Run(ctx context.Context) {
 	l, err := net.Listen("tcp", s.conf.Listen)
 	if err != nil {
 		log.Fatal("Failed to listen on socket:", err)
 	}
+	defer l.Close()
+
 	log.Println("Listening on", s.conf.Listen)
 
-	shuttingDown := false
-	go func() {
-		<-s.quit
-		shuttingDown = true
+	context.AfterFunc(ctx, func() {
 		l.Close()
-	}()
+	})
 
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			if !shuttingDown {
+			if !errors.Is(err, net.ErrClosed) {
 				log.Println("Accepting connection failed:", err)
 			}
 			break
