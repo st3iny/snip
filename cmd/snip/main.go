@@ -80,4 +80,7 @@ func main() {
 		cancel()
 		<-serverDone
 	}
+
+	log.Println("Server shutting down (waiting for pending connections)")
+	server.WaitForConnections()
 }

@@ -14,6 +14,8 @@ import (
 	"snip.io/internal/sni"
 )
 
+var wg sync.WaitGroup
+
 type Server struct {
 	conf *cfg.Conf
 }
@@ -37,7 +39,6 @@ func (s *Server) Run(ctx context.Context) {
 		l.Close()
 	})
 
-	var wg sync.WaitGroup
 	for {
 		conn, err := l.Accept()
 		if err != nil {
@@ -50,13 +51,10 @@ func (s *Server) Run(ctx context.Context) {
 		wg.Go(func() {
 			err := s.handleConnection(conn)
 			if err != nil {
-				log.Println(err)
+				log.Printf("Failed to handle connection from %v: %v\n", conn.RemoteAddr(), err)
 			}
 		})
 	}
-
-	log.Println("Server shutting down (waiting for pending connections)")
-	wg.Wait()
 }
 
 func (s *Server) handleConnection(clientConn net.Conn) error {
@@ -103,4 +101,8 @@ func (s *Server) handleConnection(clientConn net.Conn) error {
 	stats := proxy.Proxy(clientConn, backendConn, peekedClientBytes)
 	log.Printf("Proxied %s -> %s (from client %d, to client %d bytes)\n", clientConn.RemoteAddr(), backendConn.RemoteAddr(), stats.ClientToBackend, stats.BackendToClient)
 	return nil
+}
+
+func WaitForConnections() {
+	wg.Wait()
 }
