@@ -85,7 +85,7 @@ backend.
 
 ## Build
 
-1. Install Go >= 1.22
+1. Install Go >= 1.25
 2. Run `make` or `go build -o bin/snip cmd/snip/main.go`
 3. Use the binary at `bin/snip` and install it to e.g. `/usr/local/bin/snip`.
 
