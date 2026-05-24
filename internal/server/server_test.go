@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	cryptorand "crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -22,133 +23,91 @@ import (
 	"snip.io/internal/router"
 )
 
-func TestSnip(t *testing.T) {
-	t.Run("catchall", func(t *testing.T) {
-		payload := []byte("Hello, World!")
+func TestServer_Run(t *testing.T) {
+	tests := []struct {
+		name       string
+		match      []router.DomainMatcher
+		serverName string
+	}{
+		{
+			name:       "catchall",
+			match:      []router.DomainMatcher{matcher(t, "*")},
+			serverName: "example.com",
+		},
+		{
+			name:       "fqdn",
+			match:      []router.DomainMatcher{matcher(t, "example.com")},
+			serverName: "example.com",
+		},
+	}
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			payload := make([]byte, 512)
+			_, err := cryptorand.Read(payload)
+			require.NoError(t, err)
 
-		srvCalled := 0
-		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			body, _ := io.ReadAll(r.Body)
-			assert.Equal(t, payload, body)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
-			w.WriteHeader(http.StatusOK)
-			_, err := w.Write(payload)
-			assert.NoError(t, err)
+			srvCalled := 0
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, _ := io.ReadAll(r.Body)
+				assert.Equal(t, payload, body)
 
-			srvCalled++
-			cancel()
-		}))
-		defer srv.Close()
+				w.WriteHeader(http.StatusOK)
+				_, err := w.Write(payload)
+				assert.NoError(t, err)
 
-		conf := &cfg.Conf{
-			Listen: fmt.Sprintf("127.0.0.1:%d", 49152+rand.Intn(65535-49152)),
-			Router: router.Router{
-				Frontends: []router.Frontend{
-					{
-						Match: []router.DomainMatcher{matcher(t, "*")},
-						Backend: &router.Backend{
-							UpstreamAddrs: []string{strings.TrimPrefix(srv.URL, "https://")},
+				srvCalled++
+				cancel()
+			}))
+			defer srv.Close()
+
+			conf := &cfg.Conf{
+				Listen: fmt.Sprintf("127.0.0.1:%d", 49152+rand.Intn(65535-49152)),
+				Router: router.Router{
+					Frontends: []router.Frontend{
+						{
+							Match: test.match,
+							Backend: &router.Backend{
+								UpstreamAddrs: []string{strings.TrimPrefix(srv.URL, "https://")},
+							},
 						},
 					},
 				},
-			},
-		}
-		server := New(conf)
-		go server.Run(ctx)
+			}
+			server := New(conf)
+			go server.Run(ctx)
 
-		certs := x509.NewCertPool()
-		certs.AddCert(srv.Certificate())
+			certs := x509.NewCertPool()
+			certs.AddCert(srv.Certificate())
 
-		client := http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					RootCAs:    certs,
-					ServerName: "example.com",
-				},
-			},
-		}
-
-		var res *http.Response
-		err := retry(100*time.Millisecond, func() error {
-			var err error
-			res, err = client.Post(fmt.Sprintf("https://%s", conf.Listen), "application/octet-stream", bytes.NewBuffer(payload))
-			return err
-		})
-		require.NoError(t, err)
-		defer res.Body.Close()
-
-		body, err := io.ReadAll(res.Body)
-		require.NoError(t, err)
-
-		assert.Equal(t, payload, body)
-		assert.Equal(t, 1, srvCalled)
-	})
-	t.Run("fqdn", func(t *testing.T) {
-		payload := []byte("Hello, World!")
-
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		srvCalled := 0
-		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			body, _ := io.ReadAll(r.Body)
-			assert.Equal(t, payload, body)
-
-			w.WriteHeader(http.StatusOK)
-			_, err := w.Write(payload)
-			assert.NoError(t, err)
-
-			srvCalled++
-			cancel()
-		}))
-		defer srv.Close()
-
-		conf := &cfg.Conf{
-			Listen: fmt.Sprintf("127.0.0.1:%d", 49152+rand.Intn(65535-49152)),
-			Router: router.Router{
-				Frontends: []router.Frontend{
-					{
-						Match: []router.DomainMatcher{matcher(t, "example.com")},
-						Backend: &router.Backend{
-							UpstreamAddrs: []string{strings.TrimPrefix(srv.URL, "https://")},
-						},
+			client := http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{
+						RootCAs:    certs,
+						ServerName: test.serverName,
 					},
 				},
-			},
-		}
-		server := New(conf)
-		go server.Run(ctx)
+			}
 
-		certs := x509.NewCertPool()
-		certs.AddCert(srv.Certificate())
+			var res *http.Response
+			err = retry(100*time.Millisecond, func() error {
+				var err error
+				res, err = client.Post(fmt.Sprintf("https://%s", conf.Listen), "application/octet-stream", bytes.NewBuffer(payload))
+				return err
+			})
+			require.NoError(t, err)
+			defer res.Body.Close()
 
-		client := http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					RootCAs:    certs,
-					ServerName: "example.com",
-				},
-			},
-		}
+			body, err := io.ReadAll(res.Body)
+			require.NoError(t, err)
 
-		var res *http.Response
-		err := retry(100*time.Millisecond, func() error {
-			var err error
-			res, err = client.Post(fmt.Sprintf("https://%s", conf.Listen), "application/octet-stream", bytes.NewBuffer(payload))
-			return err
+			assert.Equal(t, payload, body)
+			assert.Equal(t, 1, srvCalled)
 		})
-		require.NoError(t, err)
-		defer res.Body.Close()
-
-		body, err := io.ReadAll(res.Body)
-		require.NoError(t, err)
-
-		assert.Equal(t, payload, body)
-		assert.Equal(t, 1, srvCalled)
-	})
+	}
 }
 
 func TestSnip_HandleConnection(t *testing.T) {
