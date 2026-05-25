@@ -7,12 +7,12 @@ import (
 	"sync"
 )
 
-type ProxyStats struct {
+type Stats struct {
 	BackendToClient int64
 	ClientToBackend int64
 }
 
-func Proxy(clientConn, backendConn net.Conn, peekedClientBytes []byte) ProxyStats {
+func Proxy(clientConn, backendConn net.Conn, peekedClientBytes []byte) Stats {
 	var wg sync.WaitGroup
 
 	var backendToClient int64
@@ -48,7 +48,7 @@ func Proxy(clientConn, backendConn net.Conn, peekedClientBytes []byte) ProxyStat
 
 	wg.Wait()
 
-	return ProxyStats{
+	return Stats{
 		BackendToClient: backendToClient,
 		ClientToBackend: clientToBackend,
 	}
